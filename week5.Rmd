@@ -1,0 +1,326 @@
+---
+title: "Final"
+author: "W. Spracklin"
+date: "2023-02-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+options(scipen=999)
+```
+
+## Question of interest: Was Federal Government guidance effective?
+
+During the COVID19 pandemic, the US federal government and CDC have changed position multiple times on multiple topics related to reducing the spread of COVID19. These include limiting gatherings, wearing of masks for the general population, and encouraging working from home and remote schooling. In this analysis of the data, we will compare if the number of cases rose or fell after the release of guidance on these topics.
+
+## Data Source
+
+The data I will be using for this analysis is COVID19 case, death, and recovery from John Hopkins University, acquired from their publicly available GitHub repository, located at: https://github.com/CSSEGISandData/COVID-19/tree/master/csse_covid_19_data
+
+For the dates that the federal government and CDC issued guidance, we will be using dates provided by the LA Times and wikipedia, located at: https://www.latimes.com/science/story/2021-07-27/timeline-cdc-mask-guidance-during-covid-19-pandemic
+https://en.wikipedia.org/wiki/Face_masks_during_the_COVID-19_pandemic_in_the_United_States
+
+It should be noted that there are many factors to the overall number of cases of COVID19, and the masks and general government guidance may or may not be related to the rise and fall of case numbers. We will simply be comparing if cases fell or rose after guidance was issued. Individual states may have also had their own policies that possibly overrode guidance from the federal government.
+
+## Tidying, Analyzing, and Visualizing the Data
+
+### Tidying and Summary
+
+## Data Import
+```{r importing_data}
+base_url <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/"
+us_file_urls <- c('time_series_covid19_confirmed_US.csv', 'time_series_covid19_deaths_US.csv')
+world_file_urls <- c( 'time_series_covid19_confirmed_global.csv', 'time_series_covid19_deaths_global.csv', 'time_series_covid19_recovered_global.csv')
+us_urls <- str_c(base_url, us_file_urls)
+world_urls <- str_c(base_url, world_file_urls)
+us_cases_url <- us_urls[1]
+us_deaths_url <- us_urls[2]
+world_cases_url <- world_urls[1]
+world_deaths_url <- world_urls[2]
+world_recoveries_url <- world_urls[3]
+
+us_cases <- read_csv(us_cases_url)
+us_deaths <- read_csv(us_deaths_url)
+world_cases_url <- read_csv(world_cases_url)
+world_deaths_url <- read_csv(world_deaths_url)
+world_recoveries_url <- read_csv(world_recoveries_url)
+```
+## Tidying and Summary
+
+This data contains numerous rows that include information about states, countries, and dates cases were reported. We will tidy up this data and transform it to meet our needs, including pivoting the data to fit total counts by date. 
+
+```{r tidyAndSummary}
+us_cases_tidy <- us_cases %>%
+  select(-c('UID','iso2','iso3','code3','Admin2','FIPS','Combined_Key')) %>%
+  pivot_longer( cols= -c('Province_State','Country_Region','Lat','Long_'), names_to = 'date',values_to = 'cases') %>%
+  select(-c('Lat','Long_'))
+
+total_cases_tidy <- us_cases %>%
+  select(-c('UID','iso2','iso3','code3','Admin2','FIPS','Combined_Key')) %>%
+  pivot_longer(cols=-c('Province_State','Country_Region','Lat','Long_'), names_to = 'date',values_to = 'cases') %>%
+  mutate(date=mdy(date)) %>%
+  group_by(date) %>%
+  filter(cases>0) %>%
+  select('date','cases') %>%
+  summarise(cases=sum(cases))
+```
+
+## Visualization of the Data
+
+In the following graph, we can see the total number of cases over time, along with dates that guidance was changed.
+```{r visual1}
+ggplot(total_cases_tidy, aes(x=date, y=cases)) + geom_line()
+```
+
+The above visual is effective at showing total cases, but it might be helpful for some to see the a visual of new cases per day:
+
+```{r visual2}
+new_cases_per_day <- total_cases_tidy %>% mutate(change=cases - lag(cases, default=cases[1]))
+ggplot(new_cases_per_day, aes(x=date, y=change)) + geom_col()
+```
+
+Now let's overlay the dates of guidance changes over these plots. Changes where the Federal Government encouraged mask-wearing or discouraged in-person gathering will be in orange and changes where the Federal Government loosened restrictions will be in purple:
+
+```{r advising_overlay_visuals }
+  restrictive_dates <- c("2020-04-03", "2020-08-14","2021-01-20","2021-01-30","2021-07-27", "2021-09-09", "2022-04-07")
+  relaxed_dates <- c("2020-03-24", "2020-09-15","2021-03-08","2021-04-27","2021-05-13", "2022-02-25", "2022-04-18")
+  
+  orange_dates <- as.Date(restrictive_dates)
+  purple_dates <- as.Date(relaxed_dates)
+  
+  orange_dates <- new_cases_per_day %>% filter(date %in% orange_dates)
+  purple_dates <- new_cases_per_day %>% filter(date %in% purple_dates)
+  
+  ggplot(new_cases_per_day, aes(x=date, y=change)) + geom_col() +   geom_point(data=orange_dates, aes(x=date,y=change), color='orange',size=3) +
+    geom_point(data=purple_dates, aes(x=date,y=change), color='purple', size=3) +
+    xlab("Date") + ylab("Numer of New Cases")
+  
+  
+```
+
+## Dates used in graphs below
+
+* Reduction in restrictions
+  + March 24, 2020 - Mask-use is not encouraged for general public.
+  + September 15, 2020 - CDC releases guidlines for opening schools.
+  + March 8, 2021 - CDC says those who are fully vaccinated do not need masks at small gatherings.
+  + April 27, 2021 - CDC says masks are not needed outdoors unless in a big crowd.
+  + May 13, 2021 - CDC announces relaxation of mask guidelines, including vaccinated people can stop wearing masks in most places.
+  + Feb 25, 2022 - CDC relaxed mask wearing for general population.
+  + April 18, 2022 - Federal government judge determines mask laws are unlawful.
+
+* Addition of restrictions
+  + April 3, 2020 - CDC releases guidance that the general population should wear masks
+  + July 14, 2020 - Published study encouraging mask wearing
+  + Jan. 20, 2021 - Biden signs executive order requiring masks and physical distancing on federal property and by government contractors
+  + Jan. 30, 2021 - Biden signs executive order requiring masks during travel. Makes not wearing a mask a violation of federal law
+  + July 27, 2021 - A new variant is discovered and CDC advises to return to mask wearing in areas where numbers surging
+  + September 9, 2021 - Biden issues executive order requiring all federal employees and contractors must be fully vaccinated for COVID-19.
+  + April 7, 2022 - Biden requires 3.5 million government workers to get vaccinated.
+
+## Explanation of Model
+
+We will be looking at the case numbers for 30 days before the guidance changes and the 30 days after. The blue line is the linear model of the daily case numbers before the government guidance change. The orange lines represent the 30 days after the government guidance change when restrictions were introduced. The purple lines represent the 30 days after the government guidance change when restrictions were lifted.
+
+The red line represents a linear model of overall case numbers.
+
+```{r model }
+
+mod_all_dates <- lm(change ~ date, data=new_cases_per_day)
+
+subset_dates <- new_cases_per_day %>% filter(between(date, as.Date("2020-01-01"), as.Date("2020-06-01")))
+mod_subset_dates <- lm(change ~ date, data=subset_dates)
+subset_dates_pred<- subset_dates %>% mutate(pred=predict(mod_subset_dates, subset_dates))
+
+
+pre_subset_dates1 <- new_cases_per_day %>% filter(between(date, as.Date("2020-03-03"),as.Date("2020-04-03")))
+pre_mod_subset_dates1 <- lm(change ~ date, data=pre_subset_dates1)
+pre_subset_dates_pred1 <- pre_subset_dates1 %>% mutate(pred=predict(pre_mod_subset_dates1, pre_subset_dates1))
+
+
+subset_dates1 <- new_cases_per_day %>% filter(between(date, as.Date("2020-04-03"),as.Date("2020-05-03")))
+mod_subset_dates1 <- lm(change ~ date, data=subset_dates1)
+subset_dates_pred1 <- subset_dates1 %>% mutate(pred=predict(mod_subset_dates1, subset_dates1))
+
+
+pre_subset_dates2 <- new_cases_per_day %>% filter(between(date, as.Date("2020-07-14"),as.Date("2020-08-14")))
+pre_mod_subset_dates2 <- lm(change ~ date, data=pre_subset_dates2)
+pre_subset_dates_pred2 <- pre_subset_dates2 %>% mutate(pred=predict(pre_mod_subset_dates2, pre_subset_dates2))
+
+
+subset_dates2 <- new_cases_per_day %>% filter(between(date, as.Date("2020-08-14"),as.Date("2020-09-14")))
+mod_subset_dates2 <- lm(change ~ date, data=subset_dates2)
+subset_dates_pred2 <- subset_dates2 %>% mutate(pred=predict(mod_subset_dates2, subset_dates2))
+
+
+pre_subset_dates3 <- new_cases_per_day %>% filter(between(date, as.Date("2020-12-20"),as.Date("2021-01-20")))
+pre_mod_subset_dates3 <- lm(change ~ date, data=pre_subset_dates3)
+pre_subset_dates_pred3 <- pre_subset_dates3 %>% mutate(pred=predict(pre_mod_subset_dates3, pre_subset_dates3))
+
+
+subset_dates3 <- new_cases_per_day %>% filter(between(date, as.Date("2021-01-20"),as.Date("2021-02-20")))
+mod_subset_dates3 <- lm(change ~ date, data=subset_dates3)
+subset_dates_pred3 <- subset_dates3 %>% mutate(pred=predict(mod_subset_dates3, subset_dates3))
+
+
+pre_subset_dates4 <- new_cases_per_day %>% filter(between(date, as.Date("2020-12-30"),as.Date("2021-01-30")))
+pre_mod_subset_dates4 <- lm(change ~ date, data=pre_subset_dates4)
+pre_subset_dates_pred4 <- pre_subset_dates4 %>% mutate(pred=predict(pre_mod_subset_dates4, pre_subset_dates4))
+
+
+subset_dates4 <- new_cases_per_day %>% filter(between(date, as.Date("2021-01-30"),as.Date("2021-03-2")))
+mod_subset_dates4 <- lm(change ~ date, data=subset_dates4)
+subset_dates_pred4 <- subset_dates4 %>% mutate(pred=predict(mod_subset_dates4, subset_dates4))
+
+
+pre_subset_dates5 <- new_cases_per_day %>% filter(between(date, as.Date("2021-06-27"),as.Date("2021-07-27")))
+pre_mod_subset_dates5 <- lm(change ~ date, data=pre_subset_dates5)
+pre_subset_dates_pred5 <- pre_subset_dates5 %>% mutate(pred=predict(pre_mod_subset_dates5, pre_subset_dates5))
+
+
+subset_dates5 <- new_cases_per_day %>% filter(between(date, as.Date("2021-07-27"),as.Date("2021-08-27")))
+mod_subset_dates5 <- lm(change ~ date, data=subset_dates5)
+subset_dates_pred5 <- subset_dates5 %>% mutate(pred=predict(mod_subset_dates5, subset_dates5))
+
+
+pre_subset_dates6 <- new_cases_per_day %>% filter(between(date, as.Date("2021-08-09"),as.Date("2021-09-09")))
+pre_mod_subset_dates6 <- lm(change ~ date, data=pre_subset_dates6)
+pre_subset_dates_pred6 <- pre_subset_dates6 %>% mutate(pred=predict(pre_mod_subset_dates6, pre_subset_dates6))
+
+
+subset_dates6 <- new_cases_per_day %>% filter(between(date, as.Date("2021-09-09"),as.Date("2021-10-09")))
+mod_subset_dates6 <- lm(change ~ date, data=subset_dates6)
+subset_dates_pred6 <- subset_dates6 %>% mutate(pred=predict(mod_subset_dates6, subset_dates6))
+
+
+pre_subset_dates7 <- new_cases_per_day %>% filter(between(date, as.Date("2022-03-07"),as.Date("2022-04-07")))
+pre_mod_subset_dates7 <- lm(change ~ date, data=pre_subset_dates7)
+pre_subset_dates_pred7 <- pre_subset_dates7 %>% mutate(pred=predict(pre_mod_subset_dates7, pre_subset_dates7))
+
+
+subset_dates7 <- new_cases_per_day %>% filter(between(date, as.Date("2022-04-07"),as.Date("2022-05-07")))
+mod_subset_dates7 <- lm(change ~ date, data=subset_dates7)
+subset_dates_pred7 <- subset_dates7 %>% mutate(pred=predict(mod_subset_dates7, subset_dates7))
+
+
+pre_p_subset_dates1 <- new_cases_per_day %>% filter(between(date, as.Date("2020-02-24"),as.Date("2020-03-24")))
+pre_p_mod_subset_dates1 <- lm(change ~ date, data=pre_p_subset_dates1)
+pre_p_subset_dates_pred1 <- pre_p_subset_dates1 %>% mutate(pred=predict(pre_p_mod_subset_dates1, pre_p_subset_dates1))
+
+
+p_subset_dates1 <- new_cases_per_day %>% filter(between(date, as.Date("2020-03-24"),as.Date("2020-04-24")))
+p_mod_subset_dates1 <- lm(change ~ date, data=p_subset_dates1)
+p_subset_dates_pred1 <- p_subset_dates1 %>% mutate(pred=predict(p_mod_subset_dates1, p_subset_dates1))
+
+
+pre_p_subset_dates2 <- new_cases_per_day %>% filter(between(date, as.Date("2020-08-15"),as.Date("2020-09-15")))
+pre_p_mod_subset_dates2 <- lm(change ~ date, data=pre_p_subset_dates2)
+pre_p_subset_dates_pred2 <- pre_p_subset_dates2 %>% mutate(pred=predict(pre_p_mod_subset_dates2, pre_p_subset_dates2))
+
+
+p_subset_dates2 <- new_cases_per_day %>% filter(between(date, as.Date("2020-09-15"),as.Date("2020-10-15")))
+p_mod_subset_dates2 <- lm(change ~ date, data=p_subset_dates2)
+p_subset_dates_pred2 <- p_subset_dates2 %>% mutate(pred=predict(p_mod_subset_dates2, p_subset_dates2))
+
+
+pre_p_subset_dates3 <- new_cases_per_day %>% filter(between(date, as.Date("2021-02-08"),as.Date("2021-03-08")))
+pre_p_mod_subset_dates3 <- lm(change ~ date, data=pre_p_subset_dates3)
+pre_p_subset_dates_pred3 <- pre_p_subset_dates3 %>% mutate(pred=predict(pre_p_mod_subset_dates3, pre_p_subset_dates3))
+
+
+p_subset_dates3 <- new_cases_per_day %>% filter(between(date, as.Date("2021-03-08"),as.Date("2021-04-08")))
+p_mod_subset_dates3 <- lm(change ~ date, data=p_subset_dates3)
+p_subset_dates_pred3 <- p_subset_dates3 %>% mutate(pred=predict(p_mod_subset_dates3, p_subset_dates3))
+
+
+pre_p_subset_dates4 <- new_cases_per_day %>% filter(between(date, as.Date("2021-03-27"),as.Date("2021-04-27")))
+pre_p_mod_subset_dates4 <- lm(change ~ date, data=pre_p_subset_dates4)
+pre_p_subset_dates_pred4 <- pre_p_subset_dates4 %>% mutate(pred=predict(pre_p_mod_subset_dates4, pre_p_subset_dates4))
+
+
+p_subset_dates4 <- new_cases_per_day %>% filter(between(date, as.Date("2021-04-27"),as.Date("2021-05-27")))
+p_mod_subset_dates4 <- lm(change ~ date, data=p_subset_dates4)
+p_subset_dates_pred4 <- p_subset_dates4 %>% mutate(pred=predict(p_mod_subset_dates4, p_subset_dates4))
+
+
+pre_p_subset_dates5 <- new_cases_per_day %>% filter(between(date, as.Date("2021-04-13"),as.Date("2021-05-13")))
+pre_p_mod_subset_dates5 <- lm(change ~ date, data=pre_p_subset_dates5)
+pre_p_subset_dates_pred5 <- pre_p_subset_dates5 %>% mutate(pred=predict(pre_p_mod_subset_dates5, pre_p_subset_dates5))
+
+
+p_subset_dates5 <- new_cases_per_day %>% filter(between(date, as.Date("2021-05-13"),as.Date("2021-06-13")))
+p_mod_subset_dates5 <- lm(change ~ date, data=p_subset_dates5)
+p_subset_dates_pred5 <- p_subset_dates5 %>% mutate(pred=predict(p_mod_subset_dates5, p_subset_dates5))
+
+
+pre_p_subset_dates6 <- new_cases_per_day %>% filter(between(date, as.Date("2022-01-25"),as.Date("2022-02-25")))
+pre_p_mod_subset_dates6 <- lm(change ~ date, data=pre_p_subset_dates6)
+pre_p_subset_dates_pred6 <- pre_p_subset_dates6 %>% mutate(pred=predict(pre_p_mod_subset_dates6, pre_p_subset_dates6))
+
+
+p_subset_dates6 <- new_cases_per_day %>% filter(between(date, as.Date("2022-02-25"),as.Date("2022-03-25")))
+p_mod_subset_dates6 <- lm(change ~ date, data=p_subset_dates6)
+p_subset_dates_pred6 <- p_subset_dates6 %>% mutate(pred=predict(p_mod_subset_dates6, p_subset_dates6))
+
+
+pre_p_subset_dates7 <- new_cases_per_day %>% filter(between(date, as.Date("2022-03-18"),as.Date("2022-04-18")))
+pre_p_mod_subset_dates7 <- lm(change ~ date, data=pre_p_subset_dates7)
+pre_p_subset_dates_pred7 <- pre_p_subset_dates7 %>% mutate(pred=predict(pre_p_mod_subset_dates7, pre_p_subset_dates7))
+
+p_subset_dates7 <- new_cases_per_day %>% filter(between(date, as.Date("2022-04-18"),as.Date("2022-05-18")))
+p_mod_subset_dates7 <- lm(change ~ date, data=p_subset_dates7)
+p_subset_dates_pred7 <- p_subset_dates7 %>% mutate(pred=predict(p_mod_subset_dates7, p_subset_dates7))
+
+summary(mod_all_dates)
+case_pred <- new_cases_per_day %>% mutate(pred=predict(mod_all_dates, new_cases_per_day))
+
+ggplot(case_pred, aes(x=date, y=change, group=1)) + geom_line() + 
+  geom_line( color="red", data=case_pred, aes(x=date, y=pred)) + xlab("Date") + ylab("Number of Cases") + 
+  geom_line( color="orange", data=subset_dates_pred1, aes(x=date, y=pred), linewidth=2) + 
+  geom_line( color="orange", data=subset_dates_pred2, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="orange", data=subset_dates_pred3, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="orange", data=subset_dates_pred4, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="orange", data=subset_dates_pred5, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="orange", data=subset_dates_pred6, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="orange", data=subset_dates_pred7, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="blue", data=pre_subset_dates_pred1, aes(x=date, y=pred), linewidth=2) + 
+  geom_line( color="blue", data=pre_subset_dates_pred2, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="blue", data=pre_subset_dates_pred3, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="blue", data=pre_subset_dates_pred4, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="blue", data=pre_subset_dates_pred5, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="blue", data=pre_subset_dates_pred6, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="blue", data=pre_subset_dates_pred7, aes(x=date, y=pred), linewidth=2) + xlab("Dates") + ylab("Change in Case Numbers")
+
+ggplot(case_pred, aes(x=date, y=change, group=1)) + geom_line() + 
+  geom_line( color="purple", data=p_subset_dates_pred1, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="purple", data=p_subset_dates_pred2, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="purple", data=p_subset_dates_pred3, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="purple", data=p_subset_dates_pred4, aes(x=date, y=pred), linewidth=2, alpha=0.5) +
+  geom_line( color="purple", data=p_subset_dates_pred5, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="purple", data=p_subset_dates_pred6, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="purple", data=p_subset_dates_pred7, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="blue", data=pre_p_subset_dates_pred1, aes(x=date, y=pred), linewidth=2) + 
+  geom_line( color="blue", data=pre_p_subset_dates_pred2, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="blue", data=pre_p_subset_dates_pred3, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="blue", data=pre_p_subset_dates_pred4, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="blue", data=pre_p_subset_dates_pred5, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="blue", data=pre_p_subset_dates_pred6, aes(x=date, y=pred), linewidth=2) +
+  geom_line( color="blue", data=pre_p_subset_dates_pred7, aes(x=date, y=pred), linewidth=2) + xlab("Dates") + ylab("Change in Case Numbers")
+
+```
+
+## Conclusion
+
+There does seem to be a correlation between the guidance having an impact on case numbers. After the relaxed restriction guidance issued in September, 2020 concerning the opening of schools, there wass a dramatic increase in case numbers. There was also a dramatic decrease in the number of cases after Biden signed executive order on January 20th and 30th 2021 requiring masks and physical distancing be mandated for all federal employees, all visitors on federal property, and by all travelers. There was also a spike that was seemingly curbed by the issuance of a vaccine mandate by Biden in September of 2021. There were plenty of spikes and falls that happened organically, such as the spike in early 2022, but overall, it does appear that the government had played a direct part in both increasing and decreasing COVID19 case numbers. Based on the red line above, it appears case numbers overall seem to be continuing to increase at a slow rate. Hopefully we will not see that trend continue.
+
+
+## Possible Bias
+
+It should be noted that I caught COVID19 early in the pandemic, presumably from my mother, who was a healthcare provider. At my mother's place of employment, employees were required to wear masks during their shifts, and despite this, many caught the virus. I was consciously aware of this when analyzing this data and was sure to not let it affect my analysis.
+
+```{r Session Info}
+sessionInfo()
+```
